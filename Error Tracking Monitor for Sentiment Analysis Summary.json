@@ -1,0 +1,133 @@
+{
+  "name": "Error Tracking Monitor for Sentiment Analysis Summary",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "1c98790b-e088-4f2f-8c0b-27e6b457cedd",
+      "name": "When Workflow Errors",
+      "type": "n8n-nodes-base.errorTrigger",
+      "typeVersion": 1,
+      "position": [
+        -944,
+        64
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "1-0DrbzvvAyOFjrFvdgHTCWx3wpStBAJdDuFYR3neqyk",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 1878656789,
+          "mode": "list",
+          "cachedResultName": "logs",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1-0DrbzvvAyOFjrFvdgHTCWx3wpStBAJdDuFYR3neqyk/edit#gid=1878656789"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Date_time": "={{ $now }}",
+            "Workflow": "={{ $json.workflow }}",
+            "URL": "={{ $json.execution.url }}",
+            "Last Node executed": "={{ $json.execution.lastNodeExecuted }}",
+            "Error_message": "={{ $json.execution.error.message }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "Date_time",
+              "displayName": "Date_time",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Workflow",
+              "displayName": "Workflow",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "URL",
+              "displayName": "URL",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Last Node executed",
+              "displayName": "Last Node executed",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Error_message",
+              "displayName": "Error_message",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        -736,
+        64
+      ],
+      "id": "2d2419a0-0f6d-4af5-b018-68fb417e6e30",
+      "name": "Log error",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "d0WVD0TudYNAPDVA",
+          "name": "Google Sheets account"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "When Workflow Errors": {
+      "main": [
+        [
+          {
+            "node": "Log error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "3c587e46-bb93-4f31-8e23-6a9bfee4424f",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "d519643110f34ab0c4fb970225faaf5559e2aaee4b8218b2f0b85ab85bded6a0"
+  },
+  "id": "d4LAgW4nziCtNmWi",
+  "tags": []
+}

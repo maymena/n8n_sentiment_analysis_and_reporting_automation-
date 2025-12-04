@@ -1,0 +1,485 @@
+{
+  "name": "Feedback Sentiment Analysis Summary",
+  "nodes": [
+    {
+      "parameters": {
+        "jsCode": "// Get all input items\nconst items = $input.all();\n\n// Map each incoming sheet row to the desired structure\nconst output = items.map(item => {\n  return {\n    json: {\n      customer_id: item.json.customer_id,\n      text: item.json.feedback,   // rename to field \"text\"\n    },\n  };\n});\n\n// Return all transformed items\nreturn output;\n\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -2640,
+        384
+      ],
+      "id": "ccf71980-566a-4c91-818b-96f270d7d30a",
+      "name": "Code in JavaScript"
+    },
+    {
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "value": "models/gemini-2.0-flash-lite",
+          "mode": "list",
+          "cachedResultName": "models/gemini-2.0-flash-lite"
+        },
+        "messages": {
+          "values": [
+            {
+              "content": "=\"Summarize the following customer feedback into clear key insights.\n\nThe feedback list contains {{ $json.positive_count }} positive, {{ $json.neutral_count }} neutral and, {{ $json.negative_count }} negative item(s).\n\nYou MUST respond ONLY with a single valid JSON object.\nDo NOT include any explanation, markdown, or text outside the JSON.\n\nUse this exact JSON structure:\n\n{\n  'key_themes': ['string', 'string', ...],\n  'positive_points': ['string', 'string', ...],\n  'negative_points': ['string', 'string', ...],\n  'suggested_improvement': 'string',\n  'positive_count': int,\n  'negative_count': int,\n  'neutral_count': int,\n}\n\nWhere:\n- 'key_themes' is a list of the main recurring ideas or topics.\n- 'positive_points' is a list of what customers liked or praised.\n- 'negative_points' is a list of what customers complained about or struggled with.\n- 'suggested_improvement' is one practical improvement idea based on the feedback.\n\nHere is the full feedback list:\n{{ $json.feedback_list }}\"\n"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.googleGemini",
+      "typeVersion": 1,
+      "position": [
+        -1504,
+        480
+      ],
+      "id": "5d810f71-15de-4f6b-8a98-d99b10d49382",
+      "name": "Message a model",
+      "retryOnFail": true,
+      "waitBetweenTries": 5000,
+      "maxTries": 2,
+      "credentials": {
+        "googlePalmApi": {
+          "id": "JKALx2q1GZEuN8gx",
+          "name": "Google Gemini(PaLM) Api account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Get all incoming items\nconst items = $input.all();\n\n// We expect only 1 item from the LLM after merge\nconst json = items[0].json;\n\n// Raw text returned by the LLM\nlet rawText = json?.content?.parts?.[0]?.text ?? \"\";\n\n// ------------------------------------------\n// 1. Strip Markdown code fences ```json ... ```\n// ------------------------------------------\nrawText = rawText\n  .replace(/```json/i, \"\")\n  .replace(/```/g, \"\")\n  .trim();\n\n// ------------------------------------------\n// 2. Extract the object literal between the first '{' and last '}'\n// ------------------------------------------\nconst start = rawText.indexOf(\"{\");\nconst end = rawText.lastIndexOf(\"}\");\n\nlet objectLiteral = \"\";\nif (start !== -1 && end !== -1 && end > start) {\n  objectLiteral = rawText.slice(start, end + 1);\n} else {\n  // If we can't find braces, we keep rawText for debugging\n  objectLiteral = rawText;\n}\n\n// ------------------------------------------\n// 3. Evaluate as JavaScript object literal\n//    (handles single quotes, etc.)\n// ------------------------------------------\nlet parsed = {};\ntry {\n  // This will interpret single-quoted keys/values correctly\n  parsed = (new Function(\"return \" + objectLiteral))();\n} catch (err) {\n  // Optional: log for debugging\n  console.log(\"Eval parse error:\", String(err));\n  console.log(\"Object literal was:\", objectLiteral);\n\n  parsed = {\n    error: \"Failed to parse LLM object literal\",\n    raw: objectLiteral,\n    parse_error: String(err),\n  };\n}\n\n// ------------------------------------------\n// 4. Compute date & counts\n// ------------------------------------------\nconst now = new Date().toISOString().split(\"T\")[0];\n\nconst positiveCount = parsed.positive_count ?? 0;\nconst negativeCount = parsed.negative_count ?? 0;\nconst neutralCount  = parsed.neutral_count  ?? 0;\n\n// Safe calculation for feedback_count\nlet feedbackCount;\n\nif (parsed.feedback_count != null) {\n  feedbackCount = parsed.feedback_count;\n} else if (\n  positiveCount != null &&\n  negativeCount != null &&\n  neutralCount != null\n) {\n  feedbackCount = positiveCount + negativeCount + neutralCount;\n} else if (json.feedback_count != null) {\n  feedbackCount = json.feedback_count;\n} else if (json.count != null) {\n  feedbackCount = json.count;\n} else {\n  feedbackCount = 0;\n}\n\n// ------------------------------------------\n// 5. Build final clean structured output\n// ------------------------------------------\nconst output = [\n  {\n    json: {\n      date: now,\n      feedback_count: feedbackCount,\n      positive_count: positiveCount,\n      negative_count: negativeCount,\n      neutral_count: neutralCount,\n      key_themes: parsed.key_themes ?? [],\n      positive_points: parsed.positive_points ?? [],\n      negative_points: parsed.negative_points ?? [],\n      suggested_improvement: parsed.suggested_improvement ?? \"\",\n      // Optional: debug fields if parse failed\n      parse_error: parsed.error ? parsed.parse_error : undefined,\n      raw_model_output: parsed.error ? rawText : undefined\n    },\n  },\n];\n\n// ------------------------------------------\n// 6. Return the formatted item\n// ------------------------------------------\nreturn output;\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1152,
+        480
+      ],
+      "id": "430329b0-bfca-470f-808d-8b2bac0d4baf",
+      "name": "Code in JavaScript1"
+    },
+    {
+      "parameters": {
+        "sendTo": "may.menachem@gmail.com",
+        "subject": "Feedback Summary",
+        "message": "={{\n`<html>\n  <body style=\"font-family: Arial, sans-serif; line-height: 1.6; color: #333;\">\n\n    <p style=\"font-size: 1.1em; font-weight: bold;\">Hi team,</p>\n\n    <p style=\"font-size: 1.05em;\">\n      Here is your \n      <strong style=\"font-size: 1.1em; color: #2CB1A0;\">\n        latest customer feedback summary</strong>,\n      based on <strong>${$json.feedback_count}</strong> feedback entries processed on \n      <strong>${$json.date}</strong>.\n    </p>\n\n    <p style=\"font-size: 0.95em; color: #555; margin-top: 8px;\">\n      Sentiment breakdown:\n    </p>\n    <ul style=\"font-size: 0.95em; color: #555; margin-top: 0;\">\n      <li><strong>Positive:</strong> ${$json.positive_count} feedback items</li>\n      <li><strong>Negative:</strong> ${$json.negative_count} feedback items</li>\n      <li><strong>Neutral:</strong> ${$json.neutral_count} feedback items</li>\n    </ul>\n\n    <h2 style=\"margin-top: 24px; margin-bottom: 8px; font-size: 1.2em;\">Key Themes</h2>\n    <ul>\n      ${$json.key_themes.map(theme => `<li>${theme}</li>`).join('')}\n    </ul>\n\n    <h2 style=\"margin-top: 24px; margin-bottom: 8px; font-size: 1.2em;\">Positive Points</h2>\n    <ul>\n      ${$json.positive_points.map(p => `<li>${p}</li>`).join('')}\n    </ul>\n\n    <h2 style=\"margin-top: 24px; margin-bottom: 8px; font-size: 1.2em;\">Negative Points</h2>\n    <ul>\n      ${$json.negative_points.map(n => `<li>${n}</li>`).join('')}\n    </ul>\n\n    <h2 style=\"margin-top: 24px; margin-bottom: 8px; font-size: 1.2em;\">Suggested Improvement</h2>\n    <p>${$json.suggested_improvement}</p>\n\n    <hr style=\"margin-top: 32px; margin-bottom: 16px;\" />\n\n    <p style=\"font-size: 0.9em; color: #666;\">\n      This summary was generated automatically from the latest feedback data.\n    </p>\n\n    <p style=\"margin-top: 20px;\">Best regards,<br/>Feedback Summary Bot\n      <br/>\n      <span style=\"font-size: 1em; color: #1F4D3D; font-family: 'Georgia', serif;\">\n        <span style=\"font-style: italic; color: #000;\">by</span>\n        <span style=\"font-weight: 700; color: #2CB1A0;\">May Menachem</span>\n      </span>\n    </p>\n\n  </body>\n</html>`\n}}\n\n\n",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        -928,
+        480
+      ],
+      "id": "571dc4ec-d444-49f7-a877-e37dd90ee3af",
+      "name": "Send a message",
+      "webhookId": "23471001-df49-4880-91d4-eeda0b032530",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "oNmPhBh99gvmPJRd",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "inputText": "={{ $json.text }}",
+        "options": {
+          "categories": "Positive, Neutral, Negative",
+          "systemPromptTemplate": "You are highly intelligent and accurate sentiment analyzer. Analyze the sentiment of the provided text. Categorize it into one of the following: {categories}. Use the provided formatting instructions. Only output the JSON.",
+          "enableAutoFixing": false,
+          "batching": {
+            "batchSize": null,
+            "delayBetweenBatches": null
+          }
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.sentimentAnalysis",
+      "typeVersion": 1.1,
+      "position": [
+        -2448,
+        368
+      ],
+      "id": "c95376f3-67ea-4e1d-8e22-a5a52beddb23",
+      "name": "Sentiment Analysis1"
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "127x7KShfBuBtbq8zdDng3X0a6lhjJgHP2iLMCGT0lXU",
+          "mode": "list",
+          "cachedResultName": "generated_sentiment_analysis",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/127x7KShfBuBtbq8zdDng3X0a6lhjJgHP2iLMCGT0lXU/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "sentiment",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/127x7KShfBuBtbq8zdDng3X0a6lhjJgHP2iLMCGT0lXU/edit#gid=0"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "customer_id": "={{ $json.customer_id }}",
+            "feedback": "={{ $json.text }}",
+            "category": "={{ $json.sentimentAnalysis }}",
+            "timestamp": "={{ $now.format('yyyy-MM-dd') }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "customer_id",
+              "displayName": "customer_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "feedback",
+              "displayName": "feedback",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "category",
+              "displayName": "category",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "timestamp",
+              "displayName": "timestamp",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        -1728,
+        288
+      ],
+      "id": "327fa8ea-b7fc-4b20-91dd-3b5f4918308c",
+      "name": "Append row in sheet",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "d0WVD0TudYNAPDVA",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "options": {
+          "temperature": 0
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+      "typeVersion": 1,
+      "position": [
+        -2448,
+        608
+      ],
+      "id": "13103139-721c-4e8f-91cd-2bd12de4d45c",
+      "name": "Google Gemini Chat Model",
+      "credentials": {
+        "googlePalmApi": {
+          "id": "JKALx2q1GZEuN8gx",
+          "name": "Google Gemini(PaLM) Api account"
+        }
+      }
+    },
+    {
+      "parameters": {},
+      "id": "2b2f20f7-7251-4646-bffc-c8413175b56a",
+      "name": "When clicking 'Test workflow'",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        -3152,
+        288
+      ]
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "1wcNXu_LjSdOY2sl7Hc9CJDCtIRIjIdM2K4_raC_ia78"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 530646515,
+          "mode": "list",
+          "cachedResultName": "feedback_first_100",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1wcNXu_LjSdOY2sl7Hc9CJDCtIRIjIdM2K4_raC_ia78/edit#gid=530646515"
+        },
+        "options": {}
+      },
+      "id": "c681c6b2-2af4-4db8-af60-7667825043bd",
+      "name": "Read Feedback Sheet",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        -2896,
+        288
+      ],
+      "retryOnFail": true,
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "d0WVD0TudYNAPDVA",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "pollTimes": {
+          "item": [
+            {}
+          ]
+        },
+        "documentId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "1wcNXu_LjSdOY2sl7Hc9CJDCtIRIjIdM2K4_raC_ia78"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 530646515,
+          "mode": "list",
+          "cachedResultName": "feedback_first_100",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1wcNXu_LjSdOY2sl7Hc9CJDCtIRIjIdM2K4_raC_ia78/edit#gid=530646515"
+        },
+        "event": "rowAdded",
+        "options": {}
+      },
+      "id": "593388c2-f53d-4abb-9e6b-be539b0b36f7",
+      "name": "Google Sheets Trigger",
+      "type": "n8n-nodes-base.googleSheetsTrigger",
+      "typeVersion": 1,
+      "position": [
+        -2896,
+        512
+      ],
+      "retryOnFail": true,
+      "waitBetweenTries": 100,
+      "credentials": {
+        "googleSheetsTriggerOAuth2Api": {
+          "id": "UKbpYU1NewtMLIOl",
+          "name": "Google Sheets Trigger account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\n\n// Extract normalized feedback rows\nconst feedbackItems = items.map(item => ({\n  customer_id: item.json.customer_id,\n  text: item.json.text || item.json.feedback,\n  sentiment: item.json.sentimentAnalysis?.category || \"Unknown\"\n}));\n\n// Group into positive / negative / neutral\nconst positives = [];\nconst negatives = [];\nconst neutrals = [];\n\nfor (const row of feedbackItems) {\n  const sentiment = row.sentiment.toLowerCase();\n\n  if (sentiment === \"positive\") {\n    positives.push(`(${row.customer_id}) ${row.text}`);\n  } else if (sentiment === \"negative\") {\n    negatives.push(`(${row.customer_id}) ${row.text}`);\n  } else {\n    // treat anything else as neutral\n    neutrals.push(`(${row.customer_id}) ${row.text}`);\n  }\n}\n\n// Build a structured LLM-friendly list\nconst groupedText = `\nPOSITIVES:\n${positives.map(p => `- ${p}`).join(\"\\n\")}\n\nNEGATIVES:\n${negatives.map(n => `- ${n}`).join(\"\\n\")}\n\nNEUTRALS:\n${neutrals.map(n => `- ${n}`).join(\"\\n\")}\n`.trim();\n\n// Return ONE item:\nreturn [\n  {\n    json: {\n      feedback_list: groupedText,\n      positive_count: positives.length,\n      negative_count: negatives.length,\n      neutral_count: neutrals.length,\n      total_count: feedbackItems.length\n    }\n  }\n];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1728,
+        480
+      ],
+      "id": "c69569dc-4b47-425b-a80e-b53ae79d1a1b",
+      "name": "Code in JavaScript2"
+    },
+    {
+      "parameters": {
+        "numberInputs": 3
+      },
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        -1936,
+        496
+      ],
+      "id": "150b2a20-d1dc-440d-a6b6-f98e12630e40",
+      "name": "Merge"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Code in JavaScript": {
+      "main": [
+        [
+          {
+            "node": "Sentiment Analysis1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Message a model": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript1": {
+      "main": [
+        [
+          {
+            "node": "Send a message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Sentiment Analysis1": {
+      "main": [
+        [
+          {
+            "node": "Append row in sheet",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Append row in sheet",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 1
+          }
+        ],
+        [
+          {
+            "node": "Append row in sheet",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 2
+          }
+        ]
+      ]
+    },
+    "Google Gemini Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Sentiment Analysis1",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "When clicking 'Test workflow'": {
+      "main": [
+        [
+          {
+            "node": "Read Feedback Sheet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read Feedback Sheet": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Sheets Trigger": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript2": {
+      "main": [
+        [
+          {
+            "node": "Message a model",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "callerPolicy": "workflowsFromSameOwner",
+    "availableInMCP": false,
+    "errorWorkflow": "d4LAgW4nziCtNmWi",
+    "executionTimeout": -1
+  },
+  "versionId": "13b51fed-192c-4e0f-b7f5-f9e523b549fa",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "d519643110f34ab0c4fb970225faaf5559e2aaee4b8218b2f0b85ab85bded6a0"
+  },
+  "id": "J5B2FP1oAJl3bRP8",
+  "tags": []
+}
